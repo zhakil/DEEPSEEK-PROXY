@@ -108,9 +108,8 @@ func GetSupportedModels() []string {
 		"deepseek-chat",     // DeepSeek原生聊天模型
 		"deepseek-coder",    // DeepSeek代码专用模型
 		"deepseek-reasoner", // DeepSeek推理模型 - 新增！
-		"o1",                // 映射到DeepSeek Reasoner（兼容OpenAI o1）
-		"o1-preview",        // 映射到DeepSeek Reasoner
-		"o1-mini",           // 映射到DeepSeek Reasoner
+		"o3",                // 映射到DeepSeek Reasoner（兼容OpenAI o1）
+		"o4-mini",           // 映射到DeepSeek Reasoner
 	}
 }
 
@@ -125,9 +124,8 @@ func MapModelName(openaiModel string) string {
 		"deepseek-chat":     "deepseek-chat",            // 保持原名
 		"deepseek-coder":    "deepseek-coder",           // 保持原名
 		"deepseek-reasoner": "deepseek-reasoner",        // 推理模型保持原名
-		"o1":                "deepseek-reasoner",        // OpenAI o1映射到推理模型
-		"o1-preview":        "deepseek-reasoner",        // o1预览版映射到推理模型
-		"o1-mini":           "deepseek-reasoner",        // o1 mini版映射到推理模型
+		"o3":                "deepseek-reasoner",        // OpenAI o1映射到推理模型
+		"o4-mini":           "deepseek-reasoner",        // o1 mini版映射到推理模型
 	}
 
 	// 如果找到映射，使用映射的模型名；否则使用默认模型

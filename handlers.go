@@ -8,10 +8,103 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// enhanceRequestHeaders 为HTTP请求添加完整的浏览器伪装头部
+// 这个函数就像为网络请求穿上一套完美的"伪装服"，让它看起来像来自真实的浏览器
+func enhanceRequestHeaders(req *http.Request) {
+	// 模拟最新版Chrome浏览器的User-Agent字符串
+	// 更新为最新的Chrome版本，增强真实性
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	
+	// 设置Accept头部，告诉服务器我们能接受什么类型的响应
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	
+	// 设置语言偏好，模拟真实用户的语言环境
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
+	
+	// 设置编码偏好，告诉服务器我们支持的压缩方式
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	
+	// DNT表示"Do Not Track"，这是现代浏览器的标准头部
+	req.Header.Set("DNT", "1")
+	
+	// 连接类型设置，keep-alive可以复用TCP连接，提高效率
+	req.Header.Set("Connection", "keep-alive")
+	
+	// 这些Sec-Fetch头部是现代浏览器的安全特性，帮助服务器识别请求类型
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	
+	// 添加Cache-Control头部，模拟浏览器的缓存行为
+	req.Header.Set("Cache-Control", "no-cache")
+	
+	// 添加一个随机的请求ID，模拟真实应用程序的行为
+	req.Header.Set("X-Request-ID", generateRandomRequestID())
+	
+	// 添加Referer头部，让请求看起来像是从一个合法的网页发起的
+	req.Header.Set("Referer", "https://chat.deepseek.com/")
+	
+	// 添加Origin头部，进一步增强请求的可信度
+	req.Header.Set("Origin", "https://chat.deepseek.com")
+	
+	log.Printf("已应用完整的浏览器伪装头部")
+}
+
+// generateRandomRequestID 生成一个随机的请求ID
+// 这模拟了真实应用程序为每个请求分配唯一标识符的行为
+func generateRandomRequestID() string {
+	// 使用当前时间的纳秒部分作为随机种子，确保每次生成的ID都不同
+	rand.Seed(time.Now().UnixNano())
+	
+	// 生成一个16位的随机十六进制字符串，这是常见的请求ID格式
+	const chars = "0123456789abcdef"
+	result := make([]byte, 16)
+	for i := range result {
+		result[i] = chars[rand.Intn(len(chars))]
+	}
+	
+	return string(result)
+}
+
+// mapNewModelsToDeepSeek 将新的OpenAI模型映射到DeepSeek模型
+// 这个函数专门处理o3和o4-mini等新模型的映射逻辑
+func mapNewModelsToDeepSeek(requestedModel string) string {
+	// 新的模型映射表，专门针对最新的OpenAI模型
+	newModelMapping := map[string]string{
+		// o3系列模型映射到DeepSeek的推理模型
+		"o3":           "deepseek-reasoner",
+		"o3-preview":   "deepseek-reasoner", 
+		"o3-mini":      "deepseek-reasoner",
+		
+		// o4系列模型映射
+		"o4-mini":      "deepseek-reasoner", // o4-mini也使用推理模型
+		
+		// 保持对经典模型的支持
+		"gpt-4o":       "deepseek-reasoner",
+		"gpt-4":        "deepseek-chat",
+		"gpt-3.5-turbo": "deepseek-chat",
+		
+		// DeepSeek原生模型保持不变
+		"deepseek-chat":     "deepseek-chat",
+		"deepseek-coder":    "deepseek-coder", 
+		"deepseek-reasoner": "deepseek-reasoner",
+	}
+	
+	if mappedModel, exists := newModelMapping[requestedModel]; exists {
+		log.Printf("新模型映射: %s -> %s", requestedModel, mappedModel)
+		return mappedModel
+	}
+	
+	// 如果没有找到映射，默认使用推理模型
+	log.Printf("未知模型 %s，默认映射到 deepseek-reasoner", requestedModel)
+	return "deepseek-reasoner"
+}
 
 // handleChatCompletions 处理聊天完成请求
 // 这是我们代理服务器最重要的处理器，负责处理所有的AI对话请求
@@ -51,7 +144,8 @@ func (ps *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Requ
 			http.StatusBadRequest, "请求解析")
 		return
 	}
-	
+
+	// 详细记录请求内容，便于调试
 	log.Printf("[%s] 收到的完整请求内容:", requestID)
 	log.Printf("  模型: %s", openaiReq.Model)
 	log.Printf("  消息数量: %d", len(openaiReq.Messages))
@@ -62,9 +156,6 @@ func (ps *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Requ
 	if openaiReq.MaxTokens != nil {
 		log.Printf("  最大Token: %d", *openaiReq.MaxTokens)
 	}
-
-	log.Printf("[%s] 收到请求: 模型=%s, 消息数=%d, 流式=%v",
-		requestID, openaiReq.Model, len(openaiReq.Messages), openaiReq.Stream)
 
 	// 将OpenAI请求转换为DeepSeek格式
 	deepseekReq, err := ps.convertToDeepSeekRequest(openaiReq, requestID)
@@ -84,66 +175,16 @@ func (ps *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// handleModels 处理模型列表请求
-// 返回我们代理服务器支持的所有模型列表
-func (ps *ProxyServer) handleModels(w http.ResponseWriter, r *http.Request) {
-	logRequest(r, "模型列表")
-
-	// 设置CORS头部
-	ps.handleCORS(w, r)
-
-	if r.Method == "OPTIONS" {
-		return
-	}
-
-	// 只接受GET请求
-	if r.Method != "GET" {
-		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
-			http.StatusMethodNotAllowed, "方法检查")
-		return
-	}
-
-	log.Printf("返回支持的模型列表")
-
-	// 创建模型列表响应
-	models := GetSupportedModels()
-	modelsData := make([]Model, len(models))
-
-	currentTime := time.Now().Unix()
-	for i, modelName := range models {
-		modelsData[i] = Model{
-			ID:      modelName,
-			Object:  "model",
-			Created: currentTime,
-			OwnedBy: "deepseek-proxy",
-		}
-	}
-
-	response := ModelsResponse{
-		Object: "list",
-		Data:   modelsData,
-	}
-
-	// 返回响应
-	if err := writeJSONResponse(w, response); err != nil {
-		log.Printf("写入模型列表响应失败: %v", err)
-		return
-	}
-
-	log.Printf("模型列表返回成功，共 %d 个模型", len(models))
-}
-
 // convertToDeepSeekRequest 将OpenAI请求转换为DeepSeek格式
 // 这个函数是翻译过程的核心，处理两种API格式之间的所有差异
 func (ps *ProxyServer) convertToDeepSeekRequest(openaiReq ChatRequest, requestID string) (*DeepSeekRequest, error) {
 	log.Printf("[%s] 开始转换请求格式", requestID)
 
-	// 映射模型名称，将OpenAI的模型名转换为DeepSeek的模型名
-	deepseekModel := MapModelName(openaiReq.Model)
+	// 使用新的模型映射函数
+	deepseekModel := mapNewModelsToDeepSeek(openaiReq.Model)
 	log.Printf("[%s] 模型映射: %s -> %s", requestID, openaiReq.Model, deepseekModel)
 
 	// 检查是否使用推理模型
-	// 推理模型有特殊的处理需求，我们需要记录这个信息
 	isReasoningModel := deepseekModel == "deepseek-reasoner"
 	if isReasoningModel {
 		log.Printf("[%s] 使用DeepSeek推理模型，将提供完整的思考过程", requestID)
@@ -180,7 +221,6 @@ func (ps *ProxyServer) convertToDeepSeekRequest(openaiReq ChatRequest, requestID
 	}
 
 	// 处理工具调用功能
-	// 工具调用让AI可以调用外部函数来获取信息或执行操作
 	if len(openaiReq.Tools) > 0 {
 		deepseekReq.Tools = openaiReq.Tools
 		deepseekReq.ToolChoice = convertToolChoice(openaiReq.ToolChoice)
@@ -207,7 +247,6 @@ func (ps *ProxyServer) convertToDeepSeekRequest(openaiReq ChatRequest, requestID
 // handleNormalResponse 处理普通（非流式）响应
 // 这种方式等待DeepSeek完全生成响应后，一次性返回给客户端
 func (ps *ProxyServer) handleNormalResponse(w http.ResponseWriter, deepseekReq *DeepSeekRequest, originalModel, requestID string) {
-
 	log.Printf("[%s] 处理普通响应模式", requestID)
 
 	// 向DeepSeek发送请求
@@ -231,29 +270,101 @@ func (ps *ProxyServer) handleNormalResponse(w http.ResponseWriter, deepseekReq *
 	log.Printf("[%s] 普通响应处理完成", requestID)
 }
 
-// handleAPIKeyValidation 处理API密钥验证请求
-func (ps *ProxyServer) handleAPIKeyValidation(w http.ResponseWriter, r *http.Request) {
-    // 设置CORS头部
-    ps.handleCORS(w, r)
-    
-    if r.Method == "OPTIONS" {
-        return
-    }
-    
-    // 验证API密钥格式
-    if err := validateAPIKey(r); err != nil {
-        handleError(w, err, http.StatusUnauthorized, "API密钥验证")
-        return
-    }
-    
-    // 返回成功的验证响应
-    validationResponse := map[string]interface{}{
-        "valid": true,
-        "object": "api_key_validation",
-        "organization": "deepseek-proxy",
-    }
-    
-    writeJSONResponse(w, validationResponse)
+// sendRequestToDeepSeek 向DeepSeek API发送普通请求
+// 这个函数负责与DeepSeek API的实际通信，现在包含完整的浏览器伪装
+func (ps *ProxyServer) sendRequestToDeepSeek(req *DeepSeekRequest, requestID string) (*DeepSeekResponse, error) {
+	log.Printf("[%s] 向DeepSeek发送请求", requestID)
+
+	// 将请求序列化为JSON
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	// 创建HTTP请求
+	url := ps.config.Endpoint + "/v1/chat/completions"
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("创建HTTP请求失败: %w", err)
+	}
+
+	// 设置基础的请求头部
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+ps.config.DeepSeekAPIKey)
+
+	// *** 关键改进：应用完整的浏览器伪装 ***
+	enhanceRequestHeaders(httpReq)
+	log.Printf("[%s] 已应用浏览器伪装头部", requestID)
+
+	// 发送请求
+	client := createHTTPClient()
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		errorMsg := fmt.Sprintf("DeepSeek API返回错误 %d: %s", resp.StatusCode, string(body))
+		log.Printf("[%s] %s", requestID, errorMsg)
+		return nil, fmt.Errorf(errorMsg)
+	}
+
+	// 解析响应
+	var deepseekResp DeepSeekResponse
+	if err := json.NewDecoder(resp.Body).Decode(&deepseekResp); err != nil {
+		return nil, fmt.Errorf("解析DeepSeek响应失败: %w", err)
+	}
+
+	log.Printf("[%s] DeepSeek响应接收成功", requestID)
+	return &deepseekResp, nil
+}
+
+// sendStreamingRequestToDeepSeek 向DeepSeek API发送流式请求
+// 现在也包含完整的浏览器伪装功能
+func (ps *ProxyServer) sendStreamingRequestToDeepSeek(req *DeepSeekRequest, requestID string) (*http.Response, error) {
+	log.Printf("[%s] 向DeepSeek发送流式请求", requestID)
+
+	// 序列化请求
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	// 创建HTTP请求
+	url := ps.config.Endpoint + "/v1/chat/completions"
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("创建HTTP请求失败: %w", err)
+	}
+
+	// 设置基础头部
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+ps.config.DeepSeekAPIKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	// *** 关键改进：为流式请求也应用浏览器伪装 ***
+	enhanceRequestHeaders(httpReq)
+	log.Printf("[%s] 已为流式请求应用浏览器伪装头部", requestID)
+
+	// 发送请求
+	client := createHTTPClient()
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("发送流式请求失败: %w", err)
+	}
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("DeepSeek API返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	log.Printf("[%s] DeepSeek流式响应开始接收", requestID)
+	return resp, nil
 }
 
 // handleStreamingResponse 处理流式响应
@@ -296,95 +407,7 @@ func (ps *ProxyServer) handleStreamingResponse(w http.ResponseWriter, r *http.Re
 	log.Printf("[%s] 流式响应处理完成", requestID)
 }
 
-// sendRequestToDeepSeek 向DeepSeek API发送普通请求
-// 这个函数负责与DeepSeek API的实际通信
-func (ps *ProxyServer) sendRequestToDeepSeek(req *DeepSeekRequest, requestID string) (*DeepSeekResponse, error) {
-	log.Printf("[%s] 向DeepSeek发送请求", requestID)
-
-	// 将请求序列化为JSON
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 创建HTTP请求
-	url := ps.config.Endpoint + "/v1/chat/completions"
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("创建HTTP请求失败: %w", err)
-	}
-
-	// 设置请求头部
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+ps.config.DeepSeekAPIKey)
-	httpReq.Header.Set("User-Agent", "DeepSeek-Proxy/1.0.0")
-
-	// 发送请求
-	client := createHTTPClient()
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("发送请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 检查响应状态
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("DeepSeek API返回错误 %d: %s", resp.StatusCode, string(body))
-	}
-
-	// 解析响应
-	var deepseekResp DeepSeekResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deepseekResp); err != nil {
-		return nil, fmt.Errorf("解析DeepSeek响应失败: %w", err)
-	}
-
-	log.Printf("[%s] DeepSeek响应接收成功", requestID)
-	return &deepseekResp, nil
-}
-
-// sendStreamingRequestToDeepSeek 向DeepSeek API发送流式请求
-func (ps *ProxyServer) sendStreamingRequestToDeepSeek(req *DeepSeekRequest, requestID string) (*http.Response, error) {
-	log.Printf("[%s] 向DeepSeek发送流式请求", requestID)
-
-	// 序列化请求
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 创建HTTP请求
-	url := ps.config.Endpoint + "/v1/chat/completions"
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("创建HTTP请求失败: %w", err)
-	}
-
-	// 设置流式请求的头部
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+ps.config.DeepSeekAPIKey)
-	httpReq.Header.Set("Accept", "text/event-stream")
-	httpReq.Header.Set("User-Agent", "DeepSeek-Proxy/1.0.0")
-
-	// 发送请求
-	client := createHTTPClient()
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("发送流式请求失败: %w", err)
-	}
-
-	// 检查响应状态
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, fmt.Errorf("DeepSeek API返回错误 %d: %s", resp.StatusCode, string(body))
-	}
-
-	log.Printf("[%s] DeepSeek流式响应开始接收", requestID)
-	return resp, nil
-}
-
-// processStreamingData 处理流式数据 - 修复版本
+// processStreamingData 处理流式数据
 // 这个函数负责读取DeepSeek的流式响应并转换为OpenAI格式
 func (ps *ProxyServer) processStreamingData(w http.ResponseWriter, reader io.Reader,
 	flusher http.Flusher, originalModel, requestID string, ctx context.Context) {
@@ -392,7 +415,6 @@ func (ps *ProxyServer) processStreamingData(w http.ResponseWriter, reader io.Rea
 	log.Printf("[%s] 开始处理流式数据", requestID)
 
 	// 创建一个扫描器来逐行读取SSE数据
-	// SSE格式的数据是按行传输的，每行都有特定的含义
 	scanner := bufio.NewScanner(reader)
 
 	for scanner.Scan() {
@@ -404,42 +426,35 @@ func (ps *ProxyServer) processStreamingData(w http.ResponseWriter, reader io.Rea
 			line := scanner.Text()
 
 			// 处理Server-Sent Events格式
-			// SSE格式通常是 "data: {...}" 或 "event: ..." 等
 			if strings.HasPrefix(line, "data: ") {
 				// 提取JSON数据部分
 				dataContent := strings.TrimPrefix(line, "data: ")
 
 				// 检查是否是结束标记
 				if dataContent == "[DONE]" {
-					// 发送结束标记给客户端
 					fmt.Fprintf(w, "data: [DONE]\n\n")
 					flusher.Flush()
 					log.Printf("[%s] 流式数据传输完成", requestID)
 					return
 				}
 
-				// 尝试解析JSON数据
+				// 转换DeepSeek流式响应为OpenAI格式
 				if dataContent != "" {
-					// 转换DeepSeek流式响应为OpenAI格式
 					convertedData := ps.convertStreamChunk(dataContent, originalModel, requestID)
 					if convertedData != "" {
-						// 发送转换后的数据给客户端
 						fmt.Fprintf(w, "data: %s\n\n", convertedData)
 						flusher.Flush()
 					}
 				}
 			} else if line == "" {
-				// 空行在SSE中用作数据块分隔符
 				continue
 			} else {
-				// 其他类型的SSE行（如event:、id:等）
 				fmt.Fprintf(w, "%s\n", line)
 				flusher.Flush()
 			}
 		}
 	}
 
-	// 检查扫描器是否遇到错误
 	if err := scanner.Err(); err != nil {
 		log.Printf("[%s] 流式数据读取错误: %v", requestID, err)
 	}
@@ -448,23 +463,19 @@ func (ps *ProxyServer) processStreamingData(w http.ResponseWriter, reader io.Rea
 }
 
 // convertStreamChunk 转换单个流式数据块
-// 这个函数处理每一小块流式数据，确保格式兼容
 func (ps *ProxyServer) convertStreamChunk(dataContent, originalModel, requestID string) string {
-	// 解析DeepSeek的流式响应
 	var deepSeekChunk map[string]interface{}
 	if err := json.Unmarshal([]byte(dataContent), &deepSeekChunk); err != nil {
 		log.Printf("[%s] 解析流式数据块失败: %v", requestID, err)
 		return ""
 	}
 
-	// 转换为OpenAI格式
-	// 主要是确保模型名称字段使用客户端请求的原始模型名
+	// 转换模型名称为客户端请求的原始模型名
 	if model, exists := deepSeekChunk["model"]; exists {
 		deepSeekChunk["model"] = originalModel
 		log.Printf("[%s] 转换流式块模型名: %v -> %s", requestID, model, originalModel)
 	}
 
-	// 将转换后的数据重新序列化为JSON
 	convertedData, err := json.Marshal(deepSeekChunk)
 	if err != nil {
 		log.Printf("[%s] 序列化转换后的流式数据失败: %v", requestID, err)
@@ -474,29 +485,23 @@ func (ps *ProxyServer) convertStreamChunk(dataContent, originalModel, requestID 
 	return string(convertedData)
 }
 
-// convertToOpenAIResponse 将DeepSeek响应转换为OpenAI格式 - 修复版本
-// 这确保客户端接收到的响应格式与OpenAI API完全兼容
-// 关键修复：正确处理强类型的Choices字段
+// convertToOpenAIResponse 将DeepSeek响应转换为OpenAI格式
 func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, originalModel, requestID string) map[string]interface{} {
 	log.Printf("[%s] 转换响应格式", requestID)
 
-	// 检查是否是推理模型的响应
-	// 推理模型的响应可能包含reasoning_content字段
-	isReasoningModel := originalModel == "deepseek-reasoner" || originalModel == "o1" || originalModel == "o1-preview" || originalModel == "o1-mini"
+	// 检查是否是推理模型
+	isReasoningModel := originalModel == "o3" || originalModel == "o3-preview" || originalModel == "o3-mini" ||
+		originalModel == "o4-mini" || originalModel == "deepseek-reasoner"
 
-	// 处理Choices字段 - 这是修复的关键部分
-	// 由于DeepSeekResponse.Choices是强类型的，我们需要正确地转换它
+	// 处理Choices字段
 	var processedChoices []interface{}
 
-	// 将强类型的Choices转换为interface{}切片，以便在OpenAI响应中使用
 	for _, choice := range deepseekResp.Choices {
-		// 创建一个通用的choice对象
 		processedChoice := map[string]interface{}{
 			"index":         choice.Index,
 			"finish_reason": choice.FinishReason,
 		}
 
-		// 处理Message字段
 		messageMap := map[string]interface{}{
 			"role":    choice.Message.Role,
 			"content": choice.Message.Content,
@@ -508,12 +513,11 @@ func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, o
 			log.Printf("[%s] 发现推理内容，长度: %d字符", requestID, len(choice.Message.ReasoningContent))
 		}
 
-		// 处理工具调用（如果存在）
+		// 处理工具调用
 		if len(choice.Message.ToolCalls) > 0 {
 			messageMap["tool_calls"] = choice.Message.ToolCalls
 		}
 
-		// 添加其他可能的Message字段
 		if choice.Message.Name != "" {
 			messageMap["name"] = choice.Message.Name
 		}
@@ -531,7 +535,7 @@ func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, o
 		"object":  "chat.completion",
 		"created": deepseekResp.Created,
 		"model":   originalModel,    // 使用客户端请求的模型名
-		"choices": processedChoices, // 使用我们处理过的choices
+		"choices": processedChoices,
 		"usage":   deepseekResp.Usage,
 	}
 
@@ -541,4 +545,51 @@ func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, o
 
 	log.Printf("[%s] 响应格式转换完成", requestID)
 	return openaiResp
+}
+
+// handleModels 处理模型列表请求
+// 现在返回包含o3和o4-mini的最新模型列表
+func (ps *ProxyServer) handleModels(w http.ResponseWriter, r *http.Request) {
+	logRequest(r, "模型列表")
+
+	// 设置CORS头部
+	ps.handleCORS(w, r)
+
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "GET" {
+		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
+			http.StatusMethodNotAllowed, "方法检查")
+		return
+	}
+
+	log.Printf("返回支持的模型列表")
+
+	// 获取最新的支持模型列表（包含o3和o4-mini）
+	models := GetSupportedModels()
+	modelsData := make([]Model, len(models))
+
+	currentTime := time.Now().Unix()
+	for i, modelName := range models {
+		modelsData[i] = Model{
+			ID:      modelName,
+			Object:  "model",
+			Created: currentTime,
+			OwnedBy: "deepseek-proxy",
+		}
+	}
+
+	response := ModelsResponse{
+		Object: "list",
+		Data:   modelsData,
+	}
+
+	if err := writeJSONResponse(w, response); err != nil {
+		log.Printf("写入模型列表响应失败: %v", err)
+		return
+	}
+
+	log.Printf("模型列表返回成功，共 %d 个模型", len(models))
 }
