@@ -16,12 +16,12 @@ type ChatRequest struct {
 // === 消息结构 ===
 // 对话中的每一条消息，包含角色和内容
 type Message struct {
-	Role             string     `json:"role"`                       // 消息角色：user/assistant/system/tool
-	Content          string     `json:"content"`                    // 消息的实际内容
+	Role             string     `json:"role"`                        // 消息角色：user/assistant/system/tool
+	Content          string     `json:"content"`                     // 消息的实际内容
 	ReasoningContent string     `json:"reasoning_content,omitempty"` // DeepSeek-Reasoner的推理过程内容
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`       // AI助手调用的工具列表
-	ToolCallID       string     `json:"tool_call_id,omitempty"`     // 工具响应消息的关联ID
-	Name             string     `json:"name,omitempty"`             // 消息发送者的名称
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`        // AI助手调用的工具列表
+	ToolCallID       string     `json:"tool_call_id,omitempty"`      // 工具响应消息的关联ID
+	Name             string     `json:"name,omitempty"`              // 消息发送者的名称
 }
 
 // === 工具相关结构 ===
@@ -96,10 +96,10 @@ type ModelsResponse struct {
 // === 配置管理结构 ===
 // 代理服务器的全局配置
 type ProxyConfig struct {
-	Port          int    `json:"port"`           // 监听端口
+	Port           int    `json:"port"`           // 监听端口
 	DeepSeekAPIKey string `json:"deepseek_key"`   // DeepSeek API密钥
 	DeepSeekModel  string `json:"deepseek_model"` // 默认使用的DeepSeek模型
-	Endpoint      string `json:"endpoint"`       // DeepSeek API端点
+	Endpoint       string `json:"endpoint"`       // DeepSeek API端点
 }
 
 // === 流式响应结构 ===

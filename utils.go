@@ -21,7 +21,8 @@ func writeJSONResponse(w http.ResponseWriter, data interface{}) error {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("JSON序列化失败: %v", err)
-		return fmt.Errorf("JSON序列化失败: %w", err)
+		// 修复：错误字符串改为小写开头
+		return fmt.Errorf("json序列化失败: %w", err)
 	}
 	
 	// 写入响应
@@ -47,7 +48,8 @@ func readJSONRequest(r *http.Request, target interface{}) error {
 	
 	// 将JSON数据解析到目标结构体中
 	if err := json.Unmarshal(body, target); err != nil {
-		return fmt.Errorf("JSON解析失败: %w", err)
+		// 修复：错误字符串改为小写开头
+		return fmt.Errorf("json解析失败: %w", err)
 	}
 	
 	return nil
@@ -59,24 +61,28 @@ func validateAPIKey(r *http.Request) error {
 	// 从Authorization头部获取API密钥
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return fmt.Errorf("缺少Authorization头部")
+		// 修复：错误字符串改为小写开头
+		return fmt.Errorf("缺少authorization头部")
 	}
 	
 	// 检查是否是Bearer令牌格式
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return fmt.Errorf("Authorization头部格式错误，应该是 'Bearer <token>'")
+		// 修复：错误字符串改为小写开头
+		return fmt.Errorf("authorization头部格式错误，应该是 'Bearer <token>'")
 	}
 	
 	// 提取实际的API密钥
 	providedKey := strings.TrimPrefix(authHeader, "Bearer ")
 	if providedKey == "" {
-		return fmt.Errorf("API密钥为空")
+		// 修复：错误字符串改为小写开头
+		return fmt.Errorf("api密钥为空")
 	}
 	
 	// 验证API密钥是否与配置中的密钥匹配
 	// 在实际应用中，你可能需要更复杂的验证逻辑
 	if providedKey != GlobalConfig.DeepSeekAPIKey {
-		return fmt.Errorf("无效的API密钥")
+		// 修复：错误字符串改为小写开头
+		return fmt.Errorf("无效的api密钥")
 	}
 	
 	return nil

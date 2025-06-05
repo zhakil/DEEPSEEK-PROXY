@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -15,7 +16,7 @@ var GlobalConfig *ProxyConfig
 // init函数在程序启动时自动运行，负责加载所有必要的配置
 func init() {
 	log.Printf("开始初始化代理配置...")
-	
+
 	// 尝试加载.env文件
 	// .env文件包含敏感信息如API密钥，不应该提交到版本控制系统
 	if err := godotenv.Load(); err != nil {
@@ -24,15 +25,15 @@ func init() {
 
 	// 初始化全局配置
 	GlobalConfig = &ProxyConfig{
-		Port:          getEnvAsInt("PORT", 9000),                    // 默认端口9000
-		DeepSeekAPIKey: getEnvAsString("DEEPSEEK_API_KEY", ""),       // DeepSeek API密钥
-		DeepSeekModel:  getEnvAsString("DEEPSEEK_MODEL", "deepseek-chat"), // 默认模型
-		Endpoint:      getEnvAsString("DEEPSEEK_ENDPOINT", "https://api.deepseek.com"), // API端点
+		Port:           getEnvAsInt("PORT", 9000),                                       // 默认端口9000
+		DeepSeekAPIKey: getEnvAsString("DEEPSEEK_API_KEY", ""),                          // DeepSeek API密钥
+		DeepSeekModel:  getEnvAsString("DEEPSEEK_MODEL", "deepseek-chat"),               // 默认模型
+		Endpoint:       getEnvAsString("DEEPSEEK_ENDPOINT", "https://api.deepseek.com"), // API端点
 	}
 
 	// 验证必需的配置
 	validateConfig(GlobalConfig)
-	
+
 	log.Printf("配置初始化完成:")
 	log.Printf("  - 监听端口: %d", GlobalConfig.Port)
 	log.Printf("  - DeepSeek模型: %s", GlobalConfig.DeepSeekModel)
@@ -50,11 +51,16 @@ func getEnvAsString(key, defaultValue string) string {
 }
 
 // 从环境变量获取整数值，如果不存在或无效则使用默认值
+// 修复：现在真正实现了字符串到整数的转换
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
-		// 这里我们简化处理，实际应用中应该使用strconv.Atoi进行转换
-		// 为了保持示例简单，我们先返回默认值
-		log.Printf("注意：环境变量 %s 的整数转换在此示例中被简化", key)
+		// 使用 strconv.Atoi 进行字符串到整数的转换
+		if intValue, err := strconv.Atoi(value); err == nil {
+			log.Printf("从环境变量 %s 读取到整数值: %d", key, intValue)
+			return intValue
+		} else {
+			log.Printf("警告：环境变量 %s 的值 '%s' 不是有效整数，使用默认值 %d", key, value, defaultValue)
+		}
 	}
 	return defaultValue
 }
@@ -83,11 +89,11 @@ func maskAPIKey(apiKey string) string {
 	if apiKey == "" {
 		return "未设置"
 	}
-	
+
 	if len(apiKey) < 8 {
 		return "已设置（格式可能有误）"
 	}
-	
+
 	// 显示前4位和后4位，中间用*代替
 	return apiKey[:4] + "****" + apiKey[len(apiKey)-4:]
 }
@@ -96,14 +102,15 @@ func maskAPIKey(apiKey string) string {
 // 这个函数返回我们代理支持的所有模型名称
 func GetSupportedModels() []string {
 	return []string{
-		"gpt-4o",              // 映射到DeepSeek的高级模型
-		"gpt-4",               // 映射到DeepSeek Chat
-		"gpt-3.5-turbo",       // 映射到DeepSeek Chat
-		"deepseek-chat",       // DeepSeek原生聊天模型
-		"deepseek-coder",      // DeepSeek代码专用模型
-		"deepseek-reasoner",   // DeepSeek推理模型 - 新增！
-		"o1",                  // 映射到DeepSeek Reasoner（兼容OpenAI o1）
-		"o1-preview",          // 映射到DeepSeek Reasoner
+		"gpt-4o",            // 映射到DeepSeek的高级模型
+		"gpt-4",             // 映射到DeepSeek Chat
+		"gpt-3.5-turbo",     // 映射到DeepSeek Chat
+		"deepseek-chat",     // DeepSeek原生聊天模型
+		"deepseek-coder",    // DeepSeek代码专用模型
+		"deepseek-reasoner", // DeepSeek推理模型 - 新增！
+		"o1",                // 映射到DeepSeek Reasoner（兼容OpenAI o1）
+		"o1-preview",        // 映射到DeepSeek Reasoner
+		"o1-mini",           // 映射到DeepSeek Reasoner
 	}
 }
 
@@ -112,15 +119,15 @@ func GetSupportedModels() []string {
 func MapModelName(openaiModel string) string {
 	// 模型映射表，就像一个字典，告诉我们如何翻译模型名称
 	modelMapping := map[string]string{
-		"gpt-4o":            GlobalConfig.DeepSeekModel,  // 最新的GPT-4模型映射
-		"gpt-4":             GlobalConfig.DeepSeekModel,  // GPT-4映射
-		"gpt-3.5-turbo":     GlobalConfig.DeepSeekModel,  // GPT-3.5映射
-		"deepseek-chat":     "deepseek-chat",             // 保持原名
-		"deepseek-coder":    "deepseek-coder",            // 保持原名
-		"deepseek-reasoner": "deepseek-reasoner",         // 推理模型保持原名
-		"o1":                "deepseek-reasoner",         // OpenAI o1映射到推理模型
-		"o1-preview":        "deepseek-reasoner",         // o1预览版映射到推理模型
-		"o1-mini":           "deepseek-reasoner",         // o1 mini版映射到推理模型
+		"gpt-4o":            GlobalConfig.DeepSeekModel, // 最新的GPT-4模型映射
+		"gpt-4":             GlobalConfig.DeepSeekModel, // GPT-4映射
+		"gpt-3.5-turbo":     GlobalConfig.DeepSeekModel, // GPT-3.5映射
+		"deepseek-chat":     "deepseek-chat",            // 保持原名
+		"deepseek-coder":    "deepseek-coder",           // 保持原名
+		"deepseek-reasoner": "deepseek-reasoner",        // 推理模型保持原名
+		"o1":                "deepseek-reasoner",        // OpenAI o1映射到推理模型
+		"o1-preview":        "deepseek-reasoner",        // o1预览版映射到推理模型
+		"o1-mini":           "deepseek-reasoner",        // o1 mini版映射到推理模型
 	}
 
 	// 如果找到映射，使用映射的模型名；否则使用默认模型

@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -34,7 +32,7 @@ func NewReasonerTestClient(baseURL, apiKey string) *ReasonerTestClient {
 // 这个测试验证推理模型在复杂数学问题上的表现
 func (rtc *ReasonerTestClient) TestMathReasoning() error {
 	fmt.Println("🧮 测试数学推理能力...")
-	
+
 	// 选择一个需要多步推理的数学问题
 	mathProblem := `解决这个数学问题：
 	
@@ -50,7 +48,7 @@ func (rtc *ReasonerTestClient) TestMathReasoning() error {
 		"model": "deepseek-reasoner", // 明确使用推理模型
 		"messages": []map[string]interface{}{
 			{
-				"role":    "user", 
+				"role":    "user",
 				"content": mathProblem,
 			},
 		},
@@ -66,11 +64,11 @@ func (rtc *ReasonerTestClient) TestMathReasoning() error {
 	return rtc.analyzeReasoningResponse(response, "数学推理")
 }
 
-// TestLogicalPuzzle 测试逻辑推理能力  
+// TestLogicalPuzzle 测试逻辑推理能力
 // 这个测试评估模型在复杂逻辑问题上的分析能力
 func (rtc *ReasonerTestClient) TestLogicalPuzzle() error {
 	fmt.Println("🧩 测试逻辑推理能力...")
-	
+
 	logicalPuzzle := `逻辑推理题：
 
 有五个人（Alice、Bob、Charlie、Diana、Eve）坐成一排。已知：
@@ -183,7 +181,7 @@ func (rtc *ReasonerTestClient) analyzeReasoningResponse(responseBody []byte, tes
 	finalContent, hasFinal := message["content"].(string)
 
 	fmt.Printf("✅ %s测试结果分析:\n", testType)
-	
+
 	if hasReasoning {
 		fmt.Printf("🧠 推理过程长度: %d 字符\n", len(reasoningContent))
 		fmt.Printf("🎯 推理过程预览: %s...\n", truncateString(reasoningContent, 200))
@@ -244,55 +242,4 @@ func (rtc *ReasonerTestClient) sendRequest(endpoint string, data interface{}) ([
 	return body, nil
 }
 
-// 运行所有推理测试的主函数
-func runReasonerTests() {
-	fmt.Println("🧠 开始DeepSeek-Reasoner推理能力测试")
-	fmt.Println("=============================================")
 
-	baseURL := "http://localhost:9000"
-	apiKey := os.Getenv("DEEPSEEK_API_KEY")
-
-	if apiKey == "" {
-		log.Fatal("错误: 请设置 DEEPSEEK_API_KEY 环境变量")
-	}
-
-	client := NewReasonerTestClient(baseURL, apiKey)
-
-	// 等待服务器启动
-	fmt.Println("⏳ 等待代理服务器启动...")
-	time.Sleep(3 * time.Second)
-
-	// 运行推理能力测试
-	tests := []struct {
-		name string
-		fn   func() error
-	}{
-		{"数学推理", client.TestMathReasoning},
-		{"逻辑推理", client.TestLogicalPuzzle}, 
-		{"代码调试", client.TestCodeDebugging},
-	}
-
-	var passed, failed int
-
-	for _, test := range tests {
-		fmt.Printf("🧪 运行推理测试: %s\n", test.name)
-		if err := test.fn(); err != nil {
-			fmt.Printf("❌ 推理测试失败: %s - %v\n\n", test.name, err)
-			failed++
-		} else {
-			fmt.Printf("✅ 推理测试通过: %s\n\n", test.name)
-			passed++
-		}
-	}
-
-	// 显示测试结果
-	fmt.Println("=============================================")
-	fmt.Printf("📊 推理测试结果: %d 通过, %d 失败\n", passed, failed)
-
-	if failed == 0 {
-		fmt.Println("🎉 所有推理测试都通过了！DeepSeek-Reasoner集成成功。")
-		fmt.Println("🧠 你的代理现在具备了强大的推理和思考能力！")
-	} else {
-		fmt.Printf("⚠️  有 %d 个推理测试失败，请检查配置和实现。\n", failed)
-	}
-}

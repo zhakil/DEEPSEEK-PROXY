@@ -12,50 +12,50 @@ import (
 // ProxyServer 代理服务器的主要结构体
 // 这是我们整个代理系统的核心，就像是一个智能的交通指挥官
 type ProxyServer struct {
-	config     *ProxyConfig    // 服务器配置信息
-	httpServer *http.Server    // 底层的HTTP服务器
-	mux        *http.ServeMux  // 请求路由器，决定不同的请求去哪里处理
+	config     *ProxyConfig   // 服务器配置信息
+	httpServer *http.Server   // 底层的HTTP服务器
+	mux        *http.ServeMux // 请求路由器，决定不同的请求去哪里处理
 }
 
 // NewProxyServer 创建一个新的代理服务器实例
 // 这个函数就像是一个工厂，负责组装我们代理服务器的所有组件
 func NewProxyServer(config *ProxyConfig) *ProxyServer {
 	log.Printf("正在创建代理服务器，端口: %d", config.Port)
-	
+
 	// 创建路由器
 	mux := http.NewServeMux()
-	
+
 	// 创建代理服务器实例
 	proxy := &ProxyServer{
 		config: config,
 		mux:    mux,
 	}
-	
+
 	// 设置路由规则
 	// 这些路由就像是道路标志，告诉不同的请求应该去哪里
 	proxy.setupRoutes()
-	
+
 	// 创建HTTP服务器，配置超时和其他参数
 	proxy.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Port),
 		Handler: proxy.mux,
-		
+
 		// 超时配置很重要，防止恶意客户端占用服务器资源
 		ReadTimeout:       30 * time.Second,  // 读取请求的最大时间
 		WriteTimeout:      30 * time.Second,  // 写入响应的最大时间
 		ReadHeaderTimeout: 10 * time.Second,  // 读取请求头的最大时间
 		IdleTimeout:       120 * time.Second, // 保持连接的最大空闲时间
-		
+
 		// 限制请求大小，防止过大的请求导致内存问题
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
-	
+
 	// 启用HTTP/2支持，这能提供更好的性能
 	// HTTP/2支持多路复用，就像高速公路的多车道一样
 	if err := http2.ConfigureServer(proxy.httpServer, &http2.Server{}); err != nil {
 		log.Printf("警告：无法启用HTTP/2支持: %v", err)
 	}
-	
+
 	log.Printf("✓ 代理服务器创建完成")
 	return proxy
 }
@@ -64,23 +64,23 @@ func NewProxyServer(config *ProxyConfig) *ProxyServer {
 // 这个方法定义了我们的代理服务器可以处理哪些类型的请求
 func (ps *ProxyServer) setupRoutes() {
 	log.Printf("正在设置API路由...")
-	
+
 	// OPTIONS请求处理（用于CORS预检）
 	// 当浏览器发送跨域请求时，会先发送OPTIONS请求检查权限
 	ps.mux.HandleFunc("/", ps.handleCORS)
-	
+
 	// 健康检查端点，让外部系统可以检查服务器是否正常运行
 	ps.mux.HandleFunc("/health", ps.handleHealth)
-	
+
 	// OpenAI兼容的聊天完成端点，这是最重要的端点
 	ps.mux.HandleFunc("/v1/chat/completions", ps.handleChatCompletions)
-	
+
 	// 模型列表端点，返回支持的模型列表
 	ps.mux.HandleFunc("/v1/models", ps.handleModels)
-	
+
 	// 根路径的欢迎信息
 	ps.mux.HandleFunc("/", ps.handleRoot)
-	
+
 	log.Printf("✓ API路由设置完成")
 }
 
@@ -92,7 +92,7 @@ func (ps *ProxyServer) Start() error {
 	log.Printf("🔧 API端点: http://localhost:%d/v1/chat/completions", ps.config.Port)
 	log.Printf("📋 模型列表: http://localhost:%d/v1/models", ps.config.Port)
 	log.Printf("❤️  健康检查: http://localhost:%d/health", ps.config.Port)
-	
+
 	// 开始监听请求，这是一个阻塞操作
 	return ps.httpServer.ListenAndServe()
 }
@@ -106,7 +106,7 @@ func (ps *ProxyServer) handleCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Length")
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	
+
 	// 如果是OPTIONS请求（CORS预检），直接返回成功
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
@@ -119,18 +119,18 @@ func (ps *ProxyServer) handleCORS(w http.ResponseWriter, r *http.Request) {
 func (ps *ProxyServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	// 设置CORS头部
 	ps.handleCORS(w, r)
-	
+
 	// 如果是OPTIONS请求，已经在handleCORS中处理了
 	if r.Method == "OPTIONS" {
 		return
 	}
-	
+
 	log.Printf("收到健康检查请求")
-	
+
 	// 返回服务器状态信息
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
+
 	// 创建健康状态响应
 	healthInfo := map[string]interface{}{
 		"status":    "healthy",
@@ -139,7 +139,7 @@ func (ps *ProxyServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"service":   "deepseek-proxy",
 		"uptime":    time.Since(startTime).Seconds(),
 	}
-	
+
 	// 将健康信息写入响应
 	if err := writeJSONResponse(w, healthInfo); err != nil {
 		log.Printf("写入健康检查响应失败: %v", err)
@@ -151,23 +151,23 @@ func (ps *ProxyServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (ps *ProxyServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	// 设置CORS头部
 	ps.handleCORS(w, r)
-	
+
 	// 如果是OPTIONS请求，已经在handleCORS中处理了
 	if r.Method == "OPTIONS" {
 		return
 	}
-	
+
 	// 只处理根路径的GET请求
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	
+
 	log.Printf("收到根路径访问请求")
-	
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	
+
 	// 返回友好的HTML欢迎页面
 	welcomeHTML := `
 <!DOCTYPE html>
@@ -217,7 +217,7 @@ func (ps *ProxyServer) handleRoot(w http.ResponseWriter, r *http.Request) {
     </div>
 </body>
 </html>`
-	
+
 	w.Write([]byte(welcomeHTML))
 }
 
