@@ -54,13 +54,12 @@ func getEnvAsString(key, defaultValue string) string {
 // 修复：现在真正实现了字符串到整数的转换
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
-		// 使用 strconv.Atoi 进行字符串到整数的转换
+		// 使用strconv.Atoi进行正确的字符串到整数转换
 		if intValue, err := strconv.Atoi(value); err == nil {
-			log.Printf("从环境变量 %s 读取到整数值: %d", key, intValue)
+			log.Printf("从环境变量读取 %s: %d", key, intValue)
 			return intValue
-		} else {
-			log.Printf("警告：环境变量 %s 的值 '%s' 不是有效整数，使用默认值 %d", key, value, defaultValue)
 		}
+		log.Printf("警告：环境变量 %s 的值 '%s' 不是有效整数，使用默认值 %d", key, value, defaultValue)
 	}
 	return defaultValue
 }
