@@ -64,23 +64,19 @@ func NewProxyServer(config *ProxyConfig) *ProxyServer {
 // 这个方法定义了我们的代理服务器可以处理哪些类型的请求
 func (ps *ProxyServer) setupRoutes() {
 	log.Printf("正在设置API路由...")
-
-	// OPTIONS请求处理（用于CORS预检）
-	// 当浏览器发送跨域请求时，会先发送OPTIONS请求检查权限
-	ps.mux.HandleFunc("/", ps.handleCORS)
-
+	
 	// 健康检查端点，让外部系统可以检查服务器是否正常运行
 	ps.mux.HandleFunc("/health", ps.handleHealth)
-
+	
 	// OpenAI兼容的聊天完成端点，这是最重要的端点
 	ps.mux.HandleFunc("/v1/chat/completions", ps.handleChatCompletions)
-
+	
 	// 模型列表端点，返回支持的模型列表
 	ps.mux.HandleFunc("/v1/models", ps.handleModels)
-
-	// 根路径的欢迎信息
+	
+	// 根路径处理（包含CORS和欢迎页面逻辑）
 	ps.mux.HandleFunc("/", ps.handleRoot)
-
+	
 	log.Printf("✓ API路由设置完成")
 }
 
