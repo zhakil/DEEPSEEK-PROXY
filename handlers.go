@@ -51,6 +51,17 @@ func (ps *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Requ
 			http.StatusBadRequest, "请求解析")
 		return
 	}
+	
+	log.Printf("[%s] 收到的完整请求内容:", requestID)
+	log.Printf("  模型: %s", openaiReq.Model)
+	log.Printf("  消息数量: %d", len(openaiReq.Messages))
+	log.Printf("  流式模式: %v", openaiReq.Stream)
+	if openaiReq.Temperature != nil {
+		log.Printf("  温度参数: %.2f", *openaiReq.Temperature)
+	}
+	if openaiReq.MaxTokens != nil {
+		log.Printf("  最大Token: %d", *openaiReq.MaxTokens)
+	}
 
 	log.Printf("[%s] 收到请求: 模型=%s, 消息数=%d, 流式=%v",
 		requestID, openaiReq.Model, len(openaiReq.Messages), openaiReq.Stream)

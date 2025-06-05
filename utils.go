@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"crypto/tls"
 )
 
 // writeJSONResponse 将数据以JSON格式写入HTTP响应
@@ -223,18 +224,23 @@ func getClientIP(r *http.Request) string {
 // createHTTPClient 创建用于与DeepSeek API通信的HTTP客户端
 // 这个客户端配置了适当的超时和其他参数，确保可靠的通信
 func createHTTPClient() *http.Client {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true, // 跳过SSL证书验证
+	}
+	
+	// 创建自定义的Transport
+	transport := &http.Transport{
+		TLSClientConfig:       tlsConfig,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	
 	return &http.Client{
-		Timeout: 60 * time.Second, // 总请求超时时间
-		Transport: &http.Transport{
-			// 连接超时配置
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 30 * time.Second,
-			
-			// 连接池配置，提高性能
-			MaxIdleConns:        100,              // 最大空闲连接数
-			MaxIdleConnsPerHost: 10,               // 每个主机的最大空闲连接数
-			IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
-		},
+		Timeout:   60 * time.Second,
+		Transport: transport,
 	}
 }
 
