@@ -220,6 +220,31 @@ func (ps *ProxyServer) handleNormalResponse(w http.ResponseWriter, deepseekReq *
 	log.Printf("[%s] 普通响应处理完成", requestID)
 }
 
+// handleAPIKeyValidation 处理API密钥验证请求
+func (ps *ProxyServer) handleAPIKeyValidation(w http.ResponseWriter, r *http.Request) {
+    // 设置CORS头部
+    ps.handleCORS(w, r)
+    
+    if r.Method == "OPTIONS" {
+        return
+    }
+    
+    // 验证API密钥格式
+    if err := validateAPIKey(r); err != nil {
+        handleError(w, err, http.StatusUnauthorized, "API密钥验证")
+        return
+    }
+    
+    // 返回成功的验证响应
+    validationResponse := map[string]interface{}{
+        "valid": true,
+        "object": "api_key_validation",
+        "organization": "deepseek-proxy",
+    }
+    
+    writeJSONResponse(w, validationResponse)
+}
+
 // handleStreamingResponse 处理流式响应
 // 这种方式实时传输DeepSeek的生成过程，让用户看到文字逐步出现
 func (ps *ProxyServer) handleStreamingResponse(w http.ResponseWriter, r *http.Request,

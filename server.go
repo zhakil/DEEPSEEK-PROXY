@@ -76,6 +76,11 @@ func (ps *ProxyServer) setupRoutes() {
 	
 	// 根路径处理（包含CORS和欢迎页面逻辑）
 	ps.mux.HandleFunc("/", ps.handleRoot)
+
+	// API密钥验证端点（一些客户端会调用这个端点来验证密钥）
+	ps.mux.HandleFunc("/v1/models", ps.handleModels)  // 已存在
+	ps.mux.HandleFunc("/v1/engines", ps.handleModels) // 添加这行
+	ps.mux.HandleFunc("/v1/usage", ps.handleAPIKeyValidation) // 添加这行
 	
 	log.Printf("✓ API路由设置完成")
 }
