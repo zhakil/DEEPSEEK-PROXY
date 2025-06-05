@@ -232,5 +232,70 @@ func (ps *ProxyServer) getSupportedModelsHTML() string {
 	return html
 }
 
+// 在你的 handlers.go 文件末尾添加这些缺失的方法
+
+// handleModels 处理模型列表请求 - 这是解决编译错误的关键
+func (ps *ProxyServer) handleModels(w http.ResponseWriter, r *http.Request) {
+	logRequest(r, "模型列表")
+
+	ps.handleCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "GET" {
+		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
+			http.StatusMethodNotAllowed, "方法检查")
+		return
+	}
+
+	models := GetSupportedModels()
+	modelsData := make([]Model, len(models))
+
+	currentTime := time.Now().Unix()
+	for i, modelName := range models {
+		modelsData[i] = Model{
+			ID:      modelName,
+			Object:  "model",
+			Created: currentTime,
+			OwnedBy: "deepseek-proxy",
+		}
+	}
+
+	response := ModelsResponse{
+		Object: "list",
+		Data:   modelsData,
+	}
+
+	writeJSONResponse(w, response)
+	log.Printf("模型列表返回成功，共 %d 个模型", len(models))
+}
+
+// handleUsage 处理使用情况查询（如果你添加了这个路由）
+func (ps *ProxyServer) handleUsage(w http.ResponseWriter, r *http.Request) {
+	logRequest(r, "使用情况查询")
+
+	ps.handleCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "GET" {
+		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
+			http.StatusMethodNotAllowed, "方法检查")
+		return
+	}
+
+	// 简单的使用情况响应
+	usageResponse := map[string]interface{}{
+		"status":           "active",
+		"proxy_version":    "1.0.0",
+		"uptime":           time.Since(startTime).Seconds(),
+		"supported_models": len(GetSupportedModels()),
+	}
+
+	writeJSONResponse(w, usageResponse)
+}
+
 // 记录服务器启动时间，用于计算运行时长
 var startTime = time.Now()

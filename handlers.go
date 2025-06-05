@@ -546,3 +546,80 @@ func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, o
 	log.Printf("[%s] 响应格式转换完成", requestID)
 	return openaiResp
 }
+
+// 将以下代码直接追加到 handlers.go 文件的最后面
+
+// handleModels 处理模型列表请求
+func (ps *ProxyServer) handleModels(w http.ResponseWriter, r *http.Request) {
+	logRequest(r, "模型列表")
+
+	ps.handleCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "GET" {
+		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
+			http.StatusMethodNotAllowed, "方法检查")
+		return
+	}
+
+	log.Printf("返回支持的模型列表")
+
+	models := GetSupportedModels()
+	modelsData := make([]Model, len(models))
+
+	currentTime := time.Now().Unix()
+	for i, modelName := range models {
+		modelsData[i] = Model{
+			ID:      modelName,
+			Object:  "model",
+			Created: currentTime,
+			OwnedBy: "deepseek-proxy",
+		}
+	}
+
+	response := ModelsResponse{
+		Object: "list",
+		Data:   modelsData,
+	}
+
+	if err := writeJSONResponse(w, response); err != nil {
+		log.Printf("写入模型列表响应失败: %v", err)
+		return
+	}
+
+	log.Printf("模型列表返回成功，共 %d 个模型", len(models))
+}
+
+// handleUsage 处理使用情况查询
+func (ps *ProxyServer) handleUsage(w http.ResponseWriter, r *http.Request) {
+	logRequest(r, "使用情况查询")
+
+	ps.handleCORS(w, r)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "GET" {
+		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
+			http.StatusMethodNotAllowed, "方法检查")
+		return
+	}
+
+	usageResponse := map[string]interface{}{
+		"status":           "active",
+		"proxy_version":    "1.0.0",
+		"uptime_seconds":   time.Since(startTime).Seconds(),
+		"supported_models": GetSupportedModels(),
+		"endpoint":         ps.config.Endpoint,
+		"timestamp":        time.Now().Unix(),
+	}
+
+	if err := writeJSONResponse(w, usageResponse); err != nil {
+		log.Printf("写入使用情况响应失败: %v", err)
+		return
+	}
+
+	log.Printf("使用情况查询成功")
+}
