@@ -241,5 +241,3 @@ func (rtc *ReasonerTestClient) sendRequest(endpoint string, data interface{}) ([
 
 	return body, nil
 }
-
-

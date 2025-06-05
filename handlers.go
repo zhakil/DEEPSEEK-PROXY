@@ -20,39 +20,39 @@ func enhanceRequestHeaders(req *http.Request) {
 	// 模拟最新版Chrome浏览器的User-Agent字符串
 	// 更新为最新的Chrome版本，增强真实性
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	
+
 	// 设置Accept头部，告诉服务器我们能接受什么类型的响应
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	
+
 	// 设置语言偏好，模拟真实用户的语言环境
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
-	
+
 	// 设置编码偏好，告诉服务器我们支持的压缩方式
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	
+
 	// DNT表示"Do Not Track"，这是现代浏览器的标准头部
 	req.Header.Set("DNT", "1")
-	
+
 	// 连接类型设置，keep-alive可以复用TCP连接，提高效率
 	req.Header.Set("Connection", "keep-alive")
-	
+
 	// 这些Sec-Fetch头部是现代浏览器的安全特性，帮助服务器识别请求类型
 	req.Header.Set("Sec-Fetch-Dest", "empty")
 	req.Header.Set("Sec-Fetch-Mode", "cors")
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
-	
+
 	// 添加Cache-Control头部，模拟浏览器的缓存行为
 	req.Header.Set("Cache-Control", "no-cache")
-	
+
 	// 添加一个随机的请求ID，模拟真实应用程序的行为
 	req.Header.Set("X-Request-ID", generateRandomRequestID())
-	
+
 	// 添加Referer头部，让请求看起来像是从一个合法的网页发起的
 	req.Header.Set("Referer", "https://chat.deepseek.com/")
-	
+
 	// 添加Origin头部，进一步增强请求的可信度
 	req.Header.Set("Origin", "https://chat.deepseek.com")
-	
+
 	log.Printf("已应用完整的浏览器伪装头部")
 }
 
@@ -61,14 +61,14 @@ func enhanceRequestHeaders(req *http.Request) {
 func generateRandomRequestID() string {
 	// 使用当前时间的纳秒部分作为随机种子，确保每次生成的ID都不同
 	rand.Seed(time.Now().UnixNano())
-	
+
 	// 生成一个16位的随机十六进制字符串，这是常见的请求ID格式
 	const chars = "0123456789abcdef"
 	result := make([]byte, 16)
 	for i := range result {
 		result[i] = chars[rand.Intn(len(chars))]
 	}
-	
+
 	return string(result)
 }
 
@@ -78,29 +78,29 @@ func mapNewModelsToDeepSeek(requestedModel string) string {
 	// 新的模型映射表，专门针对最新的OpenAI模型
 	newModelMapping := map[string]string{
 		// o3系列模型映射到DeepSeek的推理模型
-		"o3":           "deepseek-reasoner",
-		"o3-preview":   "deepseek-reasoner", 
-		"o3-mini":      "deepseek-reasoner",
-		
+		"o3":         "deepseek-reasoner",
+		"o3-preview": "deepseek-reasoner",
+		"o3-mini":    "deepseek-reasoner",
+
 		// o4系列模型映射
-		"o4-mini":      "deepseek-reasoner", // o4-mini也使用推理模型
-		
+		"o4-mini": "deepseek-reasoner", // o4-mini也使用推理模型
+
 		// 保持对经典模型的支持
-		"gpt-4o":       "deepseek-reasoner",
-		"gpt-4":        "deepseek-chat",
+		"gpt-4o":        "deepseek-reasoner",
+		"gpt-4":         "deepseek-chat",
 		"gpt-3.5-turbo": "deepseek-chat",
-		
+
 		// DeepSeek原生模型保持不变
 		"deepseek-chat":     "deepseek-chat",
-		"deepseek-coder":    "deepseek-coder", 
+		"deepseek-coder":    "deepseek-coder",
 		"deepseek-reasoner": "deepseek-reasoner",
 	}
-	
+
 	if mappedModel, exists := newModelMapping[requestedModel]; exists {
 		log.Printf("新模型映射: %s -> %s", requestedModel, mappedModel)
 		return mappedModel
 	}
-	
+
 	// 如果没有找到映射，默认使用推理模型
 	log.Printf("未知模型 %s，默认映射到 deepseek-reasoner", requestedModel)
 	return "deepseek-reasoner"
@@ -534,7 +534,7 @@ func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, o
 		"id":      deepseekResp.ID,
 		"object":  "chat.completion",
 		"created": deepseekResp.Created,
-		"model":   originalModel,    // 使用客户端请求的模型名
+		"model":   originalModel, // 使用客户端请求的模型名
 		"choices": processedChoices,
 		"usage":   deepseekResp.Usage,
 	}

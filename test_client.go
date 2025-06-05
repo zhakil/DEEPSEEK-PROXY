@@ -289,5 +289,3 @@ func (tc *TestClient) sendRequest(endpoint string, data interface{}) ([]byte, er
 
 	return body, nil
 }
-
-
