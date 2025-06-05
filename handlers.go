@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -275,28 +276,24 @@ func (ps *ProxyServer) handleNormalResponse(w http.ResponseWriter, deepseekReq *
 func (ps *ProxyServer) sendRequestToDeepSeek(req *DeepSeekRequest, requestID string) (*DeepSeekResponse, error) {
 	log.Printf("[%s] 向DeepSeek发送请求", requestID)
 
-	// 将请求序列化为JSON
 	reqBody, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	// 创建HTTP请求
 	url := ps.config.Endpoint + "/v1/chat/completions"
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("创建HTTP请求失败: %w", err)
 	}
 
-	// 设置基础的请求头部
+	// 设置正确的请求头部，避免压缩问题
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+ps.config.DeepSeekAPIKey)
+	httpReq.Header.Set("User-Agent", "DeepSeek-Proxy/1.0.0")
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Accept-Encoding", "gzip, deflate") // 明确支持压缩
 
-	// *** 关键改进：应用完整的浏览器伪装 ***
-	enhanceRequestHeaders(httpReq)
-	log.Printf("[%s] 已应用浏览器伪装头部", requestID)
-
-	// 发送请求
 	client := createHTTPClient()
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -304,17 +301,27 @@ func (ps *ProxyServer) sendRequestToDeepSeek(req *DeepSeekRequest, requestID str
 	}
 	defer resp.Body.Close()
 
-	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		errorMsg := fmt.Sprintf("DeepSeek API返回错误 %d: %s", resp.StatusCode, string(body))
-		log.Printf("[%s] %s", requestID, errorMsg)
-		return nil, fmt.Errorf(errorMsg)
+		return nil, fmt.Errorf("DeepSeek API返回错误 %d: %s", resp.StatusCode, string(body))
 	}
 
+	// 核心修复：处理可能的gzip压缩响应
+	var reader io.Reader = resp.Body
+
+	// 检查响应是否被压缩
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzipReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip解压失败: %w", err)
+		}
+		defer gzipReader.Close()
+		reader = gzipReader
+		log.Printf("[%s] 已处理gzip压缩响应", requestID)
+	}
 	// 解析响应
 	var deepseekResp DeepSeekResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deepseekResp); err != nil {
+	if err := json.NewDecoder(reader).Decode(&deepseekResp); err != nil {
 		return nil, fmt.Errorf("解析DeepSeek响应失败: %w", err)
 	}
 

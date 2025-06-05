@@ -65,22 +65,20 @@ func NewProxyServer(config *ProxyConfig) *ProxyServer {
 func (ps *ProxyServer) setupRoutes() {
 	log.Printf("正在设置API路由...")
 
-	// 健康检查端点，让外部系统可以检查服务器是否正常运行
+	// 健康检查端点
 	ps.mux.HandleFunc("/health", ps.handleHealth)
 
-	// OpenAI兼容的聊天完成端点，这是最重要的端点
+	// OpenAI兼容的聊天完成端点
 	ps.mux.HandleFunc("/v1/chat/completions", ps.handleChatCompletions)
 
-	// 模型列表端点，返回支持的模型列表
+	// 模型列表端点 (只注册一次!)
 	ps.mux.HandleFunc("/v1/models", ps.handleModels)
 
-	// 根路径处理（包含CORS和欢迎页面逻辑）
-	ps.mux.HandleFunc("/", ps.handleRoot)
+	// 使用情况端点 (可选)
+	ps.mux.HandleFunc("/v1/usage", ps.handleUsage)
 
-	// API密钥验证端点（一些客户端会调用这个端点来验证密钥）
-	ps.mux.HandleFunc("/v1/models", ps.handleModels)  // 已存在
-	ps.mux.HandleFunc("/v1/engines", ps.handleModels) // 添加这行
-	ps.mux.HandleFunc("/v1/usage", ps.handleUsage)    // 添加这行
+	// 根路径处理 (放在最后，避免覆盖其他路由)
+	ps.mux.HandleFunc("/", ps.handleRoot)
 
 	log.Printf("✓ API路由设置完成")
 }
@@ -235,67 +233,8 @@ func (ps *ProxyServer) getSupportedModelsHTML() string {
 // 在你的 handlers.go 文件末尾添加这些缺失的方法
 
 // handleModels 处理模型列表请求 - 这是解决编译错误的关键
-func (ps *ProxyServer) handleModels(w http.ResponseWriter, r *http.Request) {
-	logRequest(r, "模型列表")
-
-	ps.handleCORS(w, r)
-	if r.Method == "OPTIONS" {
-		return
-	}
-
-	if r.Method != "GET" {
-		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
-			http.StatusMethodNotAllowed, "方法检查")
-		return
-	}
-
-	models := GetSupportedModels()
-	modelsData := make([]Model, len(models))
-
-	currentTime := time.Now().Unix()
-	for i, modelName := range models {
-		modelsData[i] = Model{
-			ID:      modelName,
-			Object:  "model",
-			Created: currentTime,
-			OwnedBy: "deepseek-proxy",
-		}
-	}
-
-	response := ModelsResponse{
-		Object: "list",
-		Data:   modelsData,
-	}
-
-	writeJSONResponse(w, response)
-	log.Printf("模型列表返回成功，共 %d 个模型", len(models))
-}
 
 // handleUsage 处理使用情况查询（如果你添加了这个路由）
-func (ps *ProxyServer) handleUsage(w http.ResponseWriter, r *http.Request) {
-	logRequest(r, "使用情况查询")
-
-	ps.handleCORS(w, r)
-	if r.Method == "OPTIONS" {
-		return
-	}
-
-	if r.Method != "GET" {
-		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
-			http.StatusMethodNotAllowed, "方法检查")
-		return
-	}
-
-	// 简单的使用情况响应
-	usageResponse := map[string]interface{}{
-		"status":           "active",
-		"proxy_version":    "1.0.0",
-		"uptime":           time.Since(startTime).Seconds(),
-		"supported_models": len(GetSupportedModels()),
-	}
-
-	writeJSONResponse(w, usageResponse)
-}
 
 // 记录服务器启动时间，用于计算运行时长
 var startTime = time.Now()

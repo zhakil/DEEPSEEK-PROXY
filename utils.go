@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -224,18 +223,18 @@ func getClientIP(r *http.Request) string {
 // createHTTPClient 创建用于与DeepSeek API通信的HTTP客户端
 // 这个客户端配置了适当的超时和其他参数，确保可靠的通信
 func createHTTPClient() *http.Client {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // 跳过SSL证书验证
-	}
-
-	// 创建自定义的Transport
 	transport := &http.Transport{
-		TLSClientConfig:       tlsConfig,
+		// 连接配置
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+
+		// 超时配置
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   10,
-		IdleConnTimeout:       90 * time.Second,
+
+		// 关键修复：禁用自动压缩，让我们手动处理
+		DisableCompression: false,
 	}
 
 	return &http.Client{
