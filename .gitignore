@@ -1,0 +1,41 @@
+# 敏感配置文件 - 绝不提交到版本控制
+.env
+
+# Go编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+deepseek-proxy
+proxy
+
+# 测试覆盖率文件
+*.out
+
+# 依赖管理
+go.sum
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.log
+
+# 构建目录
+build/
+dist/
