@@ -15,6 +15,140 @@ import (
 	"time"
 )
 
+// convertToOpenAIResponse 专为Cursor优化的响应转换
+func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, originalModel, requestID string) map[string]interface{} {
+	log.Printf("[%s] 转换响应格式（Cursor兼容模式）", requestID)
+
+	var processedChoices []interface{}
+
+	for _, choice := range deepseekResp.Choices {
+		// Cursor兼容性：合并推理内容到主内容
+		finalContent := choice.Message.Content
+		
+		// 如果有推理内容，追加到主内容（而不是单独字段）
+		if choice.Message.ReasoningContent != "" {
+			finalContent = choice.Message.ReasoningContent + "\n\n" + choice.Message.Content
+			log.Printf("[%s] 合并推理内容到主回复，长度: %d字符", requestID, len(finalContent))
+		}
+
+		processedChoice := map[string]interface{}{
+			"index":         choice.Index,
+			"finish_reason": choice.FinishReason,
+			"message": map[string]interface{}{
+				"role":    choice.Message.Role,
+				"content": finalContent, // 使用合并后的内容
+			},
+		}
+
+		// 工具调用处理
+		if len(choice.Message.ToolCalls) > 0 {
+			processedChoice["message"].(map[string]interface{})["tool_calls"] = choice.Message.ToolCalls
+		}
+
+		processedChoices = append(processedChoices, processedChoice)
+	}
+
+	// 标准OpenAI响应格式
+	openaiResp := map[string]interface{}{
+		"id":      deepseekResp.ID,
+		"object":  "chat.completion",
+		"created": deepseekResp.Created,
+		"model":   originalModel, // 保持客户端请求的模型名
+		"choices": processedChoices,
+		"usage":   deepseekResp.Usage,
+	}
+
+	log.Printf("[%s] Cursor兼容响应转换完成", requestID)
+	return openaiResp
+}
+
+// 新增：Cursor特定的错误处理
+func (ps *ProxyServer) handleCursorError(w http.ResponseWriter, err error, requestID string) {
+	log.Printf("[%s] Cursor兼容错误处理: %v", requestID, err)
+	
+	// Cursor期望的标准错误格式
+	errorResponse := map[string]interface{}{
+		"error": map[string]interface{}{
+			"message": "服务暂时不可用，请稍后重试",
+			"type":    "service_unavailable",
+			"code":    "503",
+		},
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	writeJSONResponse(w, errorResponse)
+}
+
+// 修改：主处理函数添加Cursor检测
+func (ps *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	logRequest(r, "聊天完成")
+	ps.handleCORS(w, r)
+
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "POST" {
+		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
+			http.StatusMethodNotAllowed, "方法检查")
+		return
+	}
+
+	// Cursor客户端检测
+	userAgent := r.Header.Get("User-Agent")
+	isCursor := strings.Contains(userAgent, "Cursor") || strings.Contains(userAgent, "cursor")
+	
+	requestID := generateRequestID()
+	if isCursor {
+		log.Printf("[%s] 检测到Cursor客户端，启用兼容模式", requestID)
+	}
+
+	if err := validateAPIKey(r); err != nil {
+		if isCursor {
+			ps.handleCursorError(w, err, requestID)
+		} else {
+			handleError(w, err, http.StatusUnauthorized, "API密钥验证")
+		}
+		return
+	}
+
+	var openaiReq ChatRequest
+	if err := readJSONRequest(r, &openaiReq); err != nil {
+		if isCursor {
+			ps.handleCursorError(w, err, requestID)
+		} else {
+			handleError(w, fmt.Errorf("解析请求失败: %w", err), http.StatusBadRequest, "请求解析")
+		}
+		return
+	}
+
+	// Cursor优化：限制响应大小
+	if isCursor && (openaiReq.MaxTokens == nil || *openaiReq.MaxTokens > 2000) {
+		maxTokens := 1500 // Cursor推荐限制
+		openaiReq.MaxTokens = &maxTokens
+		log.Printf("[%s] Cursor模式：限制最大tokens为%d", requestID, maxTokens)
+	}
+
+	deepseekReq, err := ps.convertToDeepSeekRequest(openaiReq, requestID)
+	if err != nil {
+		if isCursor {
+			ps.handleCursorError(w, err, requestID)
+		} else {
+			handleError(w, fmt.Errorf("请求转换失败: %w", err), http.StatusInternalServerError, "请求转换")
+		}
+		return
+	}
+
+	// 处理响应
+	if openaiReq.Stream {
+		ps.handleStreamingResponse(w, r, deepseekReq, openaiReq.Model, requestID)
+	} else {
+		ps.handleNormalResponse(w, deepseekReq, openaiReq.Model, requestID)
+	}
+}
+
+
 // enhanceRequestHeaders 为HTTP请求添加完整的浏览器伪装头部
 // 这个函数就像为网络请求穿上一套完美的"伪装服"，让它看起来像来自真实的浏览器
 func enhanceRequestHeaders(req *http.Request) {
@@ -79,9 +213,9 @@ func mapNewModelsToDeepSeek(requestedModel string) string {
 	// 新的模型映射表，专门针对最新的OpenAI模型
 	newModelMapping := map[string]string{
 		// o3系列模型映射到DeepSeek的推理模型
-		"o3":         "deepseek-reasoner",
-		"o3-preview": "deepseek-reasoner",
-		"o3-mini":    "deepseek-reasoner",
+		"o3":                "deepseek-reasoner",
+		"o3-preview":        "deepseek-reasoner", 
+		"o3-mini":           "deepseek-reasoner",
 
 		// o4系列模型映射
 		"o4-mini": "deepseek-reasoner", // o4-mini也使用推理模型
@@ -109,72 +243,6 @@ func mapNewModelsToDeepSeek(requestedModel string) string {
 
 // handleChatCompletions 处理聊天完成请求
 // 这是我们代理服务器最重要的处理器，负责处理所有的AI对话请求
-func (ps *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	// 记录请求信息，便于监控和调试
-	logRequest(r, "聊天完成")
-
-	// 设置CORS头部，允许跨域访问
-	ps.handleCORS(w, r)
-
-	// 如果是OPTIONS预检请求，直接返回
-	if r.Method == "OPTIONS" {
-		return
-	}
-
-	// 只接受POST请求，因为聊天完成需要发送请求体
-	if r.Method != "POST" {
-		handleError(w, fmt.Errorf("不支持的请求方法: %s", r.Method),
-			http.StatusMethodNotAllowed, "方法检查")
-		return
-	}
-
-	// 验证API密钥，确保只有授权用户可以访问
-	if err := validateAPIKey(r); err != nil {
-		handleError(w, err, http.StatusUnauthorized, "API密钥验证")
-		return
-	}
-
-	// 生成唯一的请求ID，用于追踪整个请求过程
-	requestID := generateRequestID()
-	log.Printf("[%s] 开始处理聊天完成请求", requestID)
-
-	// 解析客户端发送的OpenAI格式请求
-	var openaiReq ChatRequest
-	if err := readJSONRequest(r, &openaiReq); err != nil {
-		handleError(w, fmt.Errorf("解析请求失败: %w", err),
-			http.StatusBadRequest, "请求解析")
-		return
-	}
-
-	// 详细记录请求内容，便于调试
-	log.Printf("[%s] 收到的完整请求内容:", requestID)
-	log.Printf("  模型: %s", openaiReq.Model)
-	log.Printf("  消息数量: %d", len(openaiReq.Messages))
-	log.Printf("  流式模式: %v", openaiReq.Stream)
-	if openaiReq.Temperature != nil {
-		log.Printf("  温度参数: %.2f", *openaiReq.Temperature)
-	}
-	if openaiReq.MaxTokens != nil {
-		log.Printf("  最大Token: %d", *openaiReq.MaxTokens)
-	}
-
-	// 将OpenAI请求转换为DeepSeek格式
-	deepseekReq, err := ps.convertToDeepSeekRequest(openaiReq, requestID)
-	if err != nil {
-		handleError(w, fmt.Errorf("请求转换失败: %w", err),
-			http.StatusInternalServerError, "请求转换")
-		return
-	}
-
-	// 发送请求到DeepSeek API并处理响应
-	if openaiReq.Stream {
-		// 处理流式响应，适用于需要实时显示生成过程的场景
-		ps.handleStreamingResponse(w, r, deepseekReq, openaiReq.Model, requestID)
-	} else {
-		// 处理普通响应，等待完整结果后一次性返回
-		ps.handleNormalResponse(w, deepseekReq, openaiReq.Model, requestID)
-	}
-}
 
 // convertToDeepSeekRequest 将OpenAI请求转换为DeepSeek格式
 // 这个函数是翻译过程的核心，处理两种API格式之间的所有差异
@@ -493,66 +561,6 @@ func (ps *ProxyServer) convertStreamChunk(dataContent, originalModel, requestID 
 }
 
 // convertToOpenAIResponse 将DeepSeek响应转换为OpenAI格式
-func (ps *ProxyServer) convertToOpenAIResponse(deepseekResp *DeepSeekResponse, originalModel, requestID string) map[string]interface{} {
-	log.Printf("[%s] 转换响应格式", requestID)
-
-	// 检查是否是推理模型
-	isReasoningModel := originalModel == "o3" || originalModel == "o3-preview" || originalModel == "o3-mini" ||
-		originalModel == "o4-mini" || originalModel == "deepseek-reasoner"
-
-	// 处理Choices字段
-	var processedChoices []interface{}
-
-	for _, choice := range deepseekResp.Choices {
-		processedChoice := map[string]interface{}{
-			"index":         choice.Index,
-			"finish_reason": choice.FinishReason,
-		}
-
-		messageMap := map[string]interface{}{
-			"role":    choice.Message.Role,
-			"content": choice.Message.Content,
-		}
-
-		// 如果是推理模型，检查是否有reasoning_content
-		if isReasoningModel && choice.Message.ReasoningContent != "" {
-			messageMap["reasoning_content"] = choice.Message.ReasoningContent
-			log.Printf("[%s] 发现推理内容，长度: %d字符", requestID, len(choice.Message.ReasoningContent))
-		}
-
-		// 处理工具调用
-		if len(choice.Message.ToolCalls) > 0 {
-			messageMap["tool_calls"] = choice.Message.ToolCalls
-		}
-
-		if choice.Message.Name != "" {
-			messageMap["name"] = choice.Message.Name
-		}
-		if choice.Message.ToolCallID != "" {
-			messageMap["tool_call_id"] = choice.Message.ToolCallID
-		}
-
-		processedChoice["message"] = messageMap
-		processedChoices = append(processedChoices, processedChoice)
-	}
-
-	// 创建OpenAI格式的响应
-	openaiResp := map[string]interface{}{
-		"id":      deepseekResp.ID,
-		"object":  "chat.completion",
-		"created": deepseekResp.Created,
-		"model":   originalModel, // 使用客户端请求的模型名
-		"choices": processedChoices,
-		"usage":   deepseekResp.Usage,
-	}
-
-	if isReasoningModel {
-		log.Printf("[%s] 推理模型响应处理完成", requestID)
-	}
-
-	log.Printf("[%s] 响应格式转换完成", requestID)
-	return openaiResp
-}
 
 // 将以下代码直接追加到 handlers.go 文件的最后面
 
