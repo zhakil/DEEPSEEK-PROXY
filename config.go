@@ -23,6 +23,7 @@ func init() {
 	GlobalConfig = &ProxyConfig{
 		Port:           getEnvAsInt("PORT", 9000),
 		Host:           getEnvAsString("HOST", ""),                                       // 默认空字符串表示localhost
+		DeepSeekAPIKey: getEnvAsString("DEEPSEEK_API_KEY", ""),
 		DeepSeekModel:  getEnvAsString("DEEPSEEK_MODEL", "deepseek-reasoner"),           // 默认使用推理模型
 		Endpoint:       getEnvAsString("DEEPSEEK_ENDPOINT", "https://api.deepseek.com"),
 	}
