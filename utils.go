@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -235,6 +236,16 @@ func createHTTPClient() *http.Client {
 
 		// 关键修复：禁用自动压缩，让我们手动处理
 		DisableCompression: false,
+	}
+
+	if GlobalConfig.ProxyURL != "" {
+		proxyURL, err := url.Parse(GlobalConfig.ProxyURL)
+		if err != nil {
+			log.Printf("错误：解析代理URL失败: %v", err)
+		} else {
+			transport.Proxy = http.ProxyURL(proxyURL)
+			log.Printf("使用代理: %s", GlobalConfig.ProxyURL)
+		}
 	}
 
 	return &http.Client{

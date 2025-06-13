@@ -91,6 +91,7 @@ type ProxyConfig struct {
 	DeepSeekAPIKey string `json:"deepseek_key"`
 	DeepSeekModel  string `json:"deepseek_model"`
 	Endpoint       string `json:"endpoint"`
+	ProxyURL       string `json:"proxy_url,omitempty"`
 }
 
 // === 流式响应结构 ===

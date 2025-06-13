@@ -26,6 +26,7 @@ func init() {
 		DeepSeekAPIKey: getEnvAsString("DEEPSEEK_API_KEY", ""),
 		DeepSeekModel:  getEnvAsString("DEEPSEEK_MODEL", "deepseek-reasoner"),           // 默认使用推理模型
 		Endpoint:       getEnvAsString("DEEPSEEK_ENDPOINT", "https://api.deepseek.com"),
+		ProxyURL:       getEnvAsString("PROXY_URL", ""),
 	}
 
 	validateConfig(GlobalConfig)
@@ -36,6 +37,9 @@ func init() {
 	log.Printf("  - DeepSeek模型: %s", GlobalConfig.DeepSeekModel)
 	log.Printf("  - API端点: %s", GlobalConfig.Endpoint)
 	log.Printf("  - API密钥状态: %s", maskAPIKey(GlobalConfig.DeepSeekAPIKey))
+	if GlobalConfig.ProxyURL != "" {
+		log.Printf("  - Proxy URL: %s", GlobalConfig.ProxyURL)
+	}
 }
 
 // getDisplayHost 获取用于显示的主机地址

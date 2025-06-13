@@ -33,7 +33,23 @@ cp .env.example .env
 DEEPSEEK_API_KEY=sk-your-deepseek-api-key-here
 PORT=9000
 HOST=0.0.0.0
+# PROXY_URL=http://127.0.0.1:10808 # Optional. The URL of the proxy server to use for outgoing requests to the DeepSeek API. e.g., http://127.0.0.1:10808 or socks5://127.0.0.1:10809 (Note: Go's default HTTP client supports HTTP/HTTPS and SOCKS5 proxies).
 ```
+
+### 3. 启动服务
+
+#### 环境变量
+
+除了`.env`文件，所有配置也可以通过环境变量设置：
+
+- `DEEPSEEK_API_KEY`: 必需。您的 DeepSeek API 密钥。
+- `PORT`: 可选。代理服务器监听的端口，默认为 `9000`。
+- `HOST`: 可选。代理服务器绑定的主机地址，默认为 `""` (空字符串，表示 `localhost`)。设置为 `0.0.0.0` 可以监听所有网络接口。
+- `PROXY_URL`: 可选。用于向 DeepSeek API 发出请求的代理服务器的 URL。
+  - 示例: `PROXY_URL=http://127.0.0.1:10808` 或 `PROXY_URL=socks5://127.0.0.1:10809`
+  - 注意: Go 的默认 HTTP 客户端支持 HTTP/HTTPS 和 SOCKS5 代理。
+- `DEEPSEEK_MODEL`: 可选。默认使用的 DeepSeek 模型，默认为 `deepseek-reasoner`。
+- `DEEPSEEK_ENDPOINT`: 可选。DeepSeek API 的端点URL，默认为 `https://api.deepseek.com`。
 
 ### 3. 启动服务
 
